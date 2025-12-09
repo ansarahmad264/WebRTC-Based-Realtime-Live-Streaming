@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Viewer</title>
+  <style>
+    body { text-align: center; font-family: sans-serif; margin: 0; padding: 20px; }
+    video { width: 600px; max-width: 100%; border: 2px solid #333; border-radius: 8px; }
+    #status { margin: 10px; font-weight: bold; }
+    #controls { margin-top: 15px; }
+  </style>
+</head>
+<body>
+  <h2>Viewer</h2>
+  <!-- Status message while waiting for a stream -->
+  <div id="status">Waiting for stream to start...</div>
+  <!-- Video element for the remote stream from host -->
+  <video id="remoteVideo" autoplay playsinline style="display:none;"></video>
+  <div id="controls">
+    <button id="leaveBtn" onclick="leaveStream()">Leave</button>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="js/viewer.js"></script>
+</body>
+</html>
