@@ -1,90 +1,172 @@
+
 const express = require('express');
 const http = require('http');
-const socketIo = require('socket.io');
+const { Server } = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server);
+const io = new Server(server);
 
-// Serve static files from the "public" directory
+// Serve static files from "public" directory
 app.use(express.static('public'));
 
-// In-memory state (no database)
-let hostId = null;
-const viewers = new Set();
+// In-memory stream registry (no database)
+const streams = {}; // streamId -> { hostId, title, viewers: Set<socketId> }
 
 io.on('connection', (socket) => {
-  console.log('Client connected:', socket.id);
+  console.log('Socket connected:', socket.id);
 
-  // Host indicates they are ready to stream
-  socket.on('host-ready', () => {
-    console.log('Host ready:', socket.id);
-    hostId = socket.id;
-    // Notify host of any existing viewers waiting
-    for (const viewerId of viewers) {
-      io.to(hostId).emit('new-viewer', { viewerId });
-    }
+  // Client asks for current list of live streams
+  socket.on('get-streams', () => {
+    const list = Object.entries(streams).map(([streamId, s]) => ({
+      streamId,
+      title: s.title,
+      hostId: s.hostId
+    }));
+    socket.emit('stream-list', list);
   });
 
-  // Viewer joins to watch
-  socket.on('viewer-join', () => {
-    console.log('Viewer joined:', socket.id);
-    viewers.add(socket.id);
-    // If a host is active, let the host know a new viewer is here
-    if (hostId) {
-      io.to(hostId).emit('new-viewer', { viewerId: socket.id });
-    } else {
-      // No host yet – viewer will wait until a host starts streaming
-      console.log('No host available for viewer', socket.id);
-      // (Optionally, could socket.emit('no-host') to inform the viewer UI)
+  // Host creates a new stream
+  socket.on('create-stream', ({ streamId, title }) => {
+    if (!streamId) {
+      socket.emit('error-message', { message: 'Stream ID is required.' });
+      return;
     }
+
+    const trimmedId = String(streamId).trim();
+    const streamTitle = title && title.trim() ? title.trim() : trimmedId;
+
+    streams[trimmedId] = {
+      hostId: socket.id,
+      title: streamTitle,
+      viewers: new Set()
+    };
+
+    socket.isHost = true;
+    socket.streamId = trimmedId;
+
+    console.log(`Stream created: ${trimmedId} by host ${socket.id}`);
+
+    // Acknowledge to the host
+    socket.emit('stream-created', { streamId: trimmedId, title: streamTitle });
+
+    // Notify all clients that a new stream is available
+    io.emit('stream-added', { streamId: trimmedId, title: streamTitle });
   });
 
-  // Relay host's WebRTC offer to a specific viewer
+  // Host ends their stream
+  socket.on('end-stream', () => {
+    if (!socket.isHost || !socket.streamId) {
+      return;
+    }
+    const streamId = socket.streamId;
+    const stream = streams[streamId];
+    if (!stream) return;
+
+    console.log(`Stream ended: ${streamId} by host ${socket.id}`);
+
+    // Notify only viewers of this stream that it ended
+    stream.viewers.forEach((viewerId) => {
+      io.to(viewerId).emit('stream-ended', { streamId });
+    });
+
+    delete streams[streamId];
+    io.emit('stream-removed', { streamId });
+
+    socket.streamId = null;
+    socket.isHost = false;
+  });
+
+  // Viewer chooses to watch a specific stream
+  socket.on('viewer-join-stream', ({ streamId }) => {
+    const stream = streams[streamId];
+    if (!stream) {
+      socket.emit('error-message', { message: 'Stream not found or has ended.' });
+      return;
+    }
+
+    // If viewer was already watching another stream, detach from that first
+    if (socket.currentStreamId && socket.currentStreamId !== streamId) {
+      const oldStream = streams[socket.currentStreamId];
+      if (oldStream) {
+        oldStream.viewers.delete(socket.id);
+        io.to(oldStream.hostId).emit('viewer-left', { viewerId: socket.id });
+      }
+    }
+
+    stream.viewers.add(socket.id);
+    socket.currentStreamId = streamId;
+    socket.isViewer = true;
+
+    console.log(`Viewer ${socket.id} joined stream ${streamId}`);
+
+    // Notify host to start WebRTC negotiation for this viewer
+    io.to(stream.hostId).emit('new-viewer', { viewerId: socket.id });
+  });
+
+  // Viewer stops watching their current stream
+  socket.on('viewer-leave-stream', () => {
+    if (!socket.currentStreamId) return;
+
+    const streamId = socket.currentStreamId;
+    const stream = streams[streamId];
+    if (stream) {
+      stream.viewers.delete(socket.id);
+      io.to(stream.hostId).emit('viewer-left', { viewerId: socket.id });
+      console.log(`Viewer ${socket.id} left stream ${streamId}`);
+    }
+
+    socket.currentStreamId = null;
+    socket.isViewer = false;
+  });
+
+  // Host sends SDP offer to a viewer
   socket.on('host-offer', ({ offer, viewerId }) => {
     io.to(viewerId).emit('receive-offer', { offer, hostId: socket.id });
   });
 
-  // Relay viewer's WebRTC answer back to the host
-  socket.on('viewer-answer', ({ answer, hostId: hId }) => {
-    io.to(hId).emit('receive-answer', { answer, viewerId: socket.id });
+  // Viewer sends SDP answer back to host
+  socket.on('viewer-answer', ({ answer, hostId }) => {
+    io.to(hostId).emit('receive-answer', { answer, viewerId: socket.id });
   });
 
-  // Relay ICE candidate (from host or viewer) to the other peer
+  // Either side sends ICE candidate to be forwarded
   socket.on('ice-candidate', ({ candidate, targetId }) => {
     io.to(targetId).emit('ice-candidate', { candidate, senderId: socket.id });
   });
 
-  // Host ends the stream
-  socket.on('end-stream', () => {
-    console.log('Host ended stream.');
-    // Notify all viewers that stream ended
-    socket.broadcast.emit('stream-ended');
-    // Reset state for a new session
-    hostId = null;
-    viewers.clear();
-  });
-
-  // Handle client disconnections
+  // Handle disconnects
   socket.on('disconnect', () => {
-    console.log('Disconnected:', socket.id);
-    if (socket.id === hostId) {
-      // Host disconnected -> end stream for all viewers
-      io.emit('stream-ended');
-      hostId = null;
-      viewers.clear();
-    } else {
-      // A viewer disconnected
-      viewers.delete(socket.id);
-      if (hostId) {
-        io.to(hostId).emit('viewer-left', { viewerId: socket.id });
+    console.log('Socket disconnected:', socket.id);
+
+    // If this socket was a host, end its stream and notify viewers
+    if (socket.isHost && socket.streamId) {
+      const streamId = socket.streamId;
+      const stream = streams[streamId];
+      if (stream) {
+        stream.viewers.forEach((viewerId) => {
+          io.to(viewerId).emit('stream-ended', { streamId });
+        });
+        delete streams[streamId];
+        io.emit('stream-removed', { streamId });
+        console.log(`Stream ${streamId} removed because host disconnected.`);
+      }
+    }
+
+    // If this socket was a viewer, remove from stream
+    if (socket.isViewer && socket.currentStreamId) {
+      const streamId = socket.currentStreamId;
+      const stream = streams[streamId];
+      if (stream) {
+        stream.viewers.delete(socket.id);
+        io.to(stream.hostId).emit('viewer-left', { viewerId: socket.id });
+        console.log(`Viewer ${socket.id} removed from stream ${streamId} on disconnect.`);
       }
     }
   });
 });
 
-// Start the server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}/`);
+  console.log(`Server listening on http://localhost:${PORT}`);
 });

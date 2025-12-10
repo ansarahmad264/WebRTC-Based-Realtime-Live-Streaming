@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -7,16 +8,30 @@
     body { text-align: center; font-family: sans-serif; margin: 0; padding: 20px; }
     video { width: 600px; max-width: 100%; border: 2px solid #333; border-radius: 8px; }
     #controls { margin-top: 15px; }
+    #streamInfo { margin-bottom: 15px; }
+    label { display: block; margin-bottom: 8px; }
+    input { padding: 4px 8px; width: 260px; max-width: 90%; }
     button { margin: 0 5px; padding: 8px 16px; }
   </style>
 </head>
 <body>
   <h2>Host Stream</h2>
+
+  <div id="streamInfo">
+    <label>
+      Stream ID:
+      <input id="streamIdInput" placeholder="e.g. host-a" />
+    </label>
+    <label>
+      Title (optional):
+      <input id="streamTitleInput" placeholder="My awesome live stream" />
+    </label>
+  </div>
+
   <video id="hostVideo" autoplay muted playsinline></video>
+
   <div id="controls">
-    <!-- Step 1: ask for permission -->
     <button id="permissionBtn" onclick="requestMedia()">Enable Camera & Mic</button>
-    <!-- Step 2: start/stop streaming -->
     <button id="toggleStreamBtn" onclick="toggleStream()" disabled>Start Stream</button>
   </div>
 
