@@ -1,4 +1,3 @@
-
 const socket = io();
 
 const videoElem = document.getElementById('hostVideo');
@@ -6,6 +5,8 @@ const toggleButton = document.getElementById('toggleStreamBtn');
 const permissionButton = document.getElementById('permissionBtn');
 const streamIdInput = document.getElementById('streamIdInput');
 const streamTitleInput = document.getElementById('streamTitleInput');
+const viewerCountElem = document.getElementById('viewerCount');
+const viewerListElem = document.getElementById('viewerList');
 
 let localStream = null;
 let streaming = false;
@@ -66,6 +67,10 @@ function toggleStream() {
     toggleButton.textContent = 'Start Stream';
     streamIdInput.disabled = false;
     streamTitleInput.disabled = false;
+
+    // Reset viewer UI
+    viewerCountElem.textContent = '0';
+    viewerListElem.innerHTML = '';
 
     console.log('Stream stopped.');
   }
@@ -135,6 +140,50 @@ socket.on('viewer-left', ({ viewerId }) => {
   console.log('Viewer left:', viewerId);
 });
 
-// Expose functions to global scope for inline onclick handlers
+// NEW: receive viewer list + count updates from server
+socket.on('viewer-list-update', ({ streamId, count, viewers }) => {
+  viewerCountElem.textContent = count != null ? String(count) : '0';
+  viewerListElem.innerHTML = '';
+
+  if (!Array.isArray(viewers) || viewers.length === 0) {
+    return;
+  }
+
+  viewers.forEach((v) => {
+    const item = document.createElement('div');
+    item.className = 'viewer-item';
+
+    const avatar = document.createElement('div');
+    avatar.className = 'viewer-avatar';
+
+    if (v.avatarUrl) {
+      // Real avatar from your app
+      const img = document.createElement('img');
+      img.src = v.avatarUrl;
+      img.alt = v.displayName || 'viewer';
+      avatar.appendChild(img);
+    } else {
+      // Fallback: colored circle with initial
+      const initials = document.createElement('span');
+      const nameForInitials = v.displayName || 'Anon';
+      initials.textContent = nameForInitials.charAt(0).toUpperCase();
+      initials.style.color = '#fff';
+      initials.style.fontSize = '14px';
+      initials.style.fontWeight = 'bold';
+      avatar.style.background = '#666';
+      avatar.appendChild(initials);
+    }
+
+    const name = document.createElement('div');
+    name.className = 'viewer-name';
+    name.textContent = v.displayName || v.socketId;
+
+    item.appendChild(avatar);
+    item.appendChild(name);
+    viewerListElem.appendChild(item);
+  });
+});
+
+// Expose functions for inline onclick handlers
 window.requestMedia = requestMedia;
 window.toggleStream = toggleStream;

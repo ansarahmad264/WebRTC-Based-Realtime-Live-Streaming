@@ -1,38 +1,133 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <title>Host</title>
   <style>
-    body { text-align: center; font-family: sans-serif; margin: 0; padding: 20px; }
-    video { width: 600px; max-width: 100%; border: 2px solid #333; border-radius: 8px; }
-    #controls { margin-top: 15px; }
-    #streamInfo { margin-bottom: 15px; }
-    label { display: block; margin-bottom: 8px; }
-    input { padding: 4px 8px; width: 260px; max-width: 90%; }
-    button { margin: 0 5px; padding: 8px 16px; }
+    body {
+      font-family: sans-serif;
+      margin: 0;
+      padding: 20px;
+    }
+    h2 {
+      text-align: center;
+      margin-top: 0;
+    }
+    #layout {
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      gap: 24px;
+      margin-top: 20px;
+    }
+    #main {
+      flex: 0 0 auto;
+      text-align: center;
+    }
+    #sidebar {
+      flex: 0 0 260px;
+      border-left: 1px solid #ddd;
+      padding-left: 16px;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+    #streamInfo {
+      margin-bottom: 15px;
+    }
+    label {
+      display: block;
+      margin-bottom: 8px;
+    }
+    input {
+      padding: 4px 8px;
+      width: 260px;
+      max-width: 90%;
+    }
+    video {
+      width: 600px;
+      max-width: 100%;
+      border: 2px solid #333;
+      border-radius: 8px;
+    }
+    #controls {
+      margin-top: 15px;
+    }
+    button {
+      margin: 0 5px;
+      padding: 8px 16px;
+    }
+    #viewerPanelTitle {
+      margin-top: 0;
+      font-size: 16px;
+      margin-bottom: 8px;
+    }
+    #viewerCount {
+      font-weight: bold;
+    }
+    .viewer-item {
+      display: flex;
+      align-items: center;
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+    .viewer-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: #ccc;
+      margin-right: 8px;
+      overflow: hidden;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .viewer-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .viewer-name {
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      overflow: hidden;
+      max-width: 180px;
+    }
   </style>
 </head>
 <body>
   <h2>Host Stream</h2>
 
-  <div id="streamInfo">
-    <label>
-      Stream ID:
-      <input id="streamIdInput" placeholder="e.g. host-a" />
-    </label>
-    <label>
-      Title (optional):
-      <input id="streamTitleInput" placeholder="My awesome live stream" />
-    </label>
-  </div>
+  <div id="layout">
+    <div id="main">
+      <div id="streamInfo">
+        <label>
+          Stream ID:
+          <input id="streamIdInput" placeholder="e.g. host-a" />
+        </label>
+        <label>
+          Title (optional):
+          <input id="streamTitleInput" placeholder="My awesome live stream" />
+        </label>
+      </div>
 
-  <video id="hostVideo" autoplay muted playsinline></video>
+      <video id="hostVideo" autoplay muted playsinline></video>
 
-  <div id="controls">
-    <button id="permissionBtn" onclick="requestMedia()">Enable Camera & Mic</button>
-    <button id="toggleStreamBtn" onclick="toggleStream()" disabled>Start Stream</button>
+      <div id="controls">
+        <button id="permissionBtn" onclick="requestMedia()">Enable Camera & Mic</button>
+        <button id="toggleStreamBtn" onclick="toggleStream()" disabled>Start Stream</button>
+      </div>
+    </div>
+
+    <aside id="sidebar">
+      <h3 id="viewerPanelTitle">
+        Current viewers: <span id="viewerCount">0</span>
+      </h3>
+      <div id="viewerList">
+        <!-- viewer items injected here -->
+      </div>
+    </aside>
   </div>
 
   <script src="/socket.io/socket.io.js"></script>

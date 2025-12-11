@@ -1,4 +1,3 @@
-
 const socket = io();
 
 const streamsContainer = document.getElementById('streamsContainer');
@@ -9,6 +8,10 @@ const leaveBtn = document.getElementById('leaveBtn');
 let pc = null;
 let currentStreamId = null;
 let currentHostId = null;
+
+// TEMP demo identity – replace with real OAuth user later
+const viewerName = 'Viewer-' + Math.floor(Math.random() * 10000);
+const viewerAvatarUrl = null;
 
 // Request initial list of streams
 socket.emit('get-streams');
@@ -159,7 +162,15 @@ function joinStream(streamId) {
 
   currentStreamId = streamId;
   statusElem.textContent = `Connecting to stream: ${streamId} ...`;
-  socket.emit('viewer-join-stream', { streamId });
+
+  // Send viewer metadata (this is where real OAuth user data goes later)
+  socket.emit('viewer-join-stream', {
+    streamId,
+    user: {
+      displayName: viewerName,
+      avatarUrl: viewerAvatarUrl
+    }
+  });
 }
 
 // Called when the viewer clicks "Stop Watching" or when a stream ends

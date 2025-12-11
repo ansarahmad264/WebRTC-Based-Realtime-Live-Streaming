@@ -1,4 +1,3 @@
-
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -11,7 +10,28 @@ const io = new Server(server);
 app.use(express.static('public'));
 
 // In-memory stream registry (no database)
-const streams = {}; // streamId -> { hostId, title, viewers: Set<socketId> }
+// streamId -> { hostId, title, viewers: Map<socketId, { socketId, displayName, avatarUrl }> }
+const streams = {};
+
+/**
+ * Send viewer count + list to the host of a given stream.
+ */
+function sendViewerListUpdate(streamId) {
+  const stream = streams[streamId];
+  if (!stream) return;
+
+  const viewersArray = Array.from(stream.viewers.values()).map((v) => ({
+    socketId: v.socketId,
+    displayName: v.displayName || null,
+    avatarUrl: v.avatarUrl || null
+  }));
+
+  io.to(stream.hostId).emit('viewer-list-update', {
+    streamId,
+    count: viewersArray.length,
+    viewers: viewersArray
+  });
+}
 
 io.on('connection', (socket) => {
   console.log('Socket connected:', socket.id);
@@ -39,7 +59,7 @@ io.on('connection', (socket) => {
     streams[trimmedId] = {
       hostId: socket.id,
       title: streamTitle,
-      viewers: new Set()
+      viewers: new Map()
     };
 
     socket.isHost = true;
@@ -52,6 +72,9 @@ io.on('connection', (socket) => {
 
     // Notify all clients that a new stream is available
     io.emit('stream-added', { streamId: trimmedId, title: streamTitle });
+
+    // Initial empty viewer list for host
+    sendViewerListUpdate(trimmedId);
   });
 
   // Host ends their stream
@@ -66,9 +89,9 @@ io.on('connection', (socket) => {
     console.log(`Stream ended: ${streamId} by host ${socket.id}`);
 
     // Notify only viewers of this stream that it ended
-    stream.viewers.forEach((viewerId) => {
+    for (const [viewerId] of stream.viewers) {
       io.to(viewerId).emit('stream-ended', { streamId });
-    });
+    }
 
     delete streams[streamId];
     io.emit('stream-removed', { streamId });
@@ -78,7 +101,8 @@ io.on('connection', (socket) => {
   });
 
   // Viewer chooses to watch a specific stream
-  socket.on('viewer-join-stream', ({ streamId }) => {
+  // user = { displayName, avatarUrl } (optional; can come from OAuth later)
+  socket.on('viewer-join-stream', ({ streamId, user }) => {
     const stream = streams[streamId];
     if (!stream) {
       socket.emit('error-message', { message: 'Stream not found or has ended.' });
@@ -91,17 +115,28 @@ io.on('connection', (socket) => {
       if (oldStream) {
         oldStream.viewers.delete(socket.id);
         io.to(oldStream.hostId).emit('viewer-left', { viewerId: socket.id });
+        sendViewerListUpdate(socket.currentStreamId);
       }
     }
 
-    stream.viewers.add(socket.id);
+    const viewerInfo = {
+      socketId: socket.id,
+      displayName: user && user.displayName ? String(user.displayName) : null,
+      avatarUrl: user && user.avatarUrl ? String(user.avatarUrl) : null
+    };
+
+    stream.viewers.set(socket.id, viewerInfo);
     socket.currentStreamId = streamId;
     socket.isViewer = true;
+    socket.viewerInfo = viewerInfo;
 
     console.log(`Viewer ${socket.id} joined stream ${streamId}`);
 
     // Notify host to start WebRTC negotiation for this viewer
     io.to(stream.hostId).emit('new-viewer', { viewerId: socket.id });
+
+    // Send updated viewer list to host
+    sendViewerListUpdate(streamId);
   });
 
   // Viewer stops watching their current stream
@@ -114,10 +149,12 @@ io.on('connection', (socket) => {
       stream.viewers.delete(socket.id);
       io.to(stream.hostId).emit('viewer-left', { viewerId: socket.id });
       console.log(`Viewer ${socket.id} left stream ${streamId}`);
+      sendViewerListUpdate(streamId);
     }
 
     socket.currentStreamId = null;
     socket.isViewer = false;
+    socket.viewerInfo = null;
   });
 
   // Host sends SDP offer to a viewer
@@ -126,8 +163,8 @@ io.on('connection', (socket) => {
   });
 
   // Viewer sends SDP answer back to host
-  socket.on('viewer-answer', ({ answer, hostId }) => {
-    io.to(hostId).emit('receive-answer', { answer, viewerId: socket.id });
+  socket.on('viewer-answer', ({ answer, hostId: hId }) => {
+    io.to(hId).emit('receive-answer', { answer, viewerId: socket.id });
   });
 
   // Either side sends ICE candidate to be forwarded
@@ -144,9 +181,9 @@ io.on('connection', (socket) => {
       const streamId = socket.streamId;
       const stream = streams[streamId];
       if (stream) {
-        stream.viewers.forEach((viewerId) => {
+        for (const [viewerId] of stream.viewers) {
           io.to(viewerId).emit('stream-ended', { streamId });
-        });
+        }
         delete streams[streamId];
         io.emit('stream-removed', { streamId });
         console.log(`Stream ${streamId} removed because host disconnected.`);
@@ -161,6 +198,7 @@ io.on('connection', (socket) => {
         stream.viewers.delete(socket.id);
         io.to(stream.hostId).emit('viewer-left', { viewerId: socket.id });
         console.log(`Viewer ${socket.id} removed from stream ${streamId} on disconnect.`);
+        sendViewerListUpdate(streamId);
       }
     }
   });
