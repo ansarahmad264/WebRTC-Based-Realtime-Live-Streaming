@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>View Streams</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 0;
+      padding: 20px;
+    }
+    h2 {
+      text-align: center;
+      margin-top: 0;
+    }
+    #streamsContainer {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      justify-content: center;
+    }
+    .stream-card {
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 16px;
+      width: 200px;
+      text-align: center;
+      background: #f9f9f9;
+    }
+    .stream-title {
+      font-weight: bold;
+      margin-bottom: 8px;
+    }
+    .stream-id {
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 12px;
+    }
+    button {
+      padding: 6px 12px;
+    }
+    #status {
+      text-align: center;
+      margin-top: 20px;
+    }
+    #remoteVideo {
+      display: none;
+      width: 640px;
+      max-width: 100%;
+      border: 2px solid #333;
+      border-radius: 8px;
+      margin: 20px auto;
+    }
+    #leaveBtn {
+      display: none;
+      margin-top: 10px;
+      padding: 8px 16px;
+    }
+  </style>
+</head>
+<body>
+  <h2>Live Streams</h2>
+  <div id="streamsContainer"></div>
+  <div id="status">Loading streams...</div>
+  <!-- The remote video from the host will appear here when watching a stream -->
+  <video id="remoteVideo" autoplay playsinline></video>
+  <div style="text-align:center;">
+    <button id="leaveBtn" onclick="leaveCurrentStream()">Stop Watching</button>
+  </div>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="js/viewer.js"></script>
+</body>
+</html>
